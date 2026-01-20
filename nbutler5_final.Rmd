@@ -1,0 +1,405 @@
+---
+title: "Final Report"
+author: "Nathan Butler"
+date: "2025-05-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, message=FALSE}
+# Load Required Libraries
+library(Lahman)
+library(tidyverse)
+library(readr)
+```
+
+# Background
+
+The St. Louis Cardinals have historically been a team that is at the top of the standings. They are always competitive and have a large list of Hall of Famers that have played for them. Cardinals have the second most World Series Wins (11) among all teams, except for the Yankees and have dominated in the division. For example here is a plot that shows all of their wins by the year.
+
+```{r cards_wins, echo=FALSE}
+# Filter and recode data
+Cards <- Lahman::Teams %>%
+  filter(franchID == 'STL' & yearID >= 1903 & yearID != 2020) %>%
+  mutate(
+    WSWin = case_when(
+      is.na(WSWin) ~ "No World Series Held",
+      WSWin == "Y" ~ "Won World Series",
+      WSWin == "N" ~ "Did Not Win",
+      TRUE ~ WSWin
+    ),
+    WSWin = factor(WSWin, levels = c("Won World Series", "Did Not Win", "No World Series Held")),
+    Wpct = W / G
+  )
+
+ggplot(Cards, aes(x = yearID, y = Wpct)) +
+  geom_line(color = "gray40") +
+  geom_point(aes(color = WSWin), size = 2) +
+  scale_color_manual(values = c(
+    "Won World Series" = "blue",
+    "Did Not Win" = "red",
+    "No World Series Held" = "gray10"
+  )) +
+  scale_y_continuous(limits = c(0.3, 0.7)) +
+  labs(
+    title = "St. Louis Cardinals Win % by Year",
+    x = "Year",
+    y = "Win Percentage",
+    color = "World Series Outcome"
+  ) +
+  theme(legend.position = "bottom")
+
+```
+
+As you can see there is history in the Cardinals for being a good team and having lots of wins. Specifically if we look at the recent Cardinals (since 2000), and see how they fared in the division we will see that they have been successful.
+
+```{r}
+ggplot(Cards %>% filter(yearID >= 2000), aes(x = yearID, y = Wpct)) +
+  geom_line(color = "gray40") +
+  geom_point(aes(color = DivWin), size = 2) +
+  scale_y_continuous(limits = c(0.3, 0.7)) +
+  scale_x_continuous(breaks = c(2000, 2005, 2010, 2015, 2019, 2023)) +
+  labs(
+    title = "St. Louis Cardinals Win % by Year",
+    x = "Year",
+    y = "Win Percentage",
+    color = "Divisional Win?"
+  ) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+As you can see the Cardinals have been very successful in their division.
+
+# Research Question
+
+The point of this paper is to look at factors that led to the Cardinals downfall of 2023. We will look specifically at the pitching downfall that led to a major difference production for the team. Looking at this plot below you will see the difference in the years and how pitching was a major difference in the season.
+
+```{r}
+cards_long <- Cards %>%
+  filter(yearID >= 2017 & yearID != 2020) %>%
+  select(yearID, HA, RA, ERA) %>%
+  pivot_longer(cols = c(HA, RA, ERA), names_to = "Stat", values_to = "Value") %>%
+  mutate(Stat = recode(Stat,
+                       "HA" = "Hits Against",
+                       "RA" = "Runs Against",
+                       "ERA" = "Earned Run Average"))
+
+# Plot
+ggplot(cards_long, aes(x = yearID, y = Value)) +
+  geom_line(group = 1, color = "steelblue") +
+  geom_point(color = "darkred", size = 2) +
+  facet_wrap(~ Stat, scales = "free_y") +
+  scale_x_continuous(limits = c(2017, 2023), breaks = seq(2017, 2023, by = 2)) +
+  labs(
+    title = "Cardinals Pitching Statistics (2017–2023, Excluding 2020)",
+    x = "Year",
+    y = "Value"
+  ) +
+  theme_bw()
+```
+
+All of these categories really shot up during this year and it led to one of the worst records in Cardinals history. When looking at this tibble you can see how just how different the pitching performance was during this time.
+
+```{r}
+Cards %>%
+  filter(yearID >= 2017 & yearID != 2020) %>%
+  select("Year" = yearID, W, L, Rank, R, RA, ERA, HRA, SOA)
+```
+
+All categories appear to be much worse than in the past, especially the Runs Against. To know that it is a bad number and not just common among the league we will look at Runs scored for 2023 for all Teams.
+
+```{r message = FALSE, cache=TRUE}
+library(mlbplotR)
+
+lahman_to_mlbplotr <- tibble::tribble(
+  ~teamID, ~team_abbr,
+  "LAA", "LAA",
+  "ARI", "AZ",
+  "ATL", "ATL",
+  "BAL", "BAL",
+  "BOS", "BOS",
+  "CHN", "CHC",
+  "CHA", "CWS",
+  "CIN", "CIN",
+  "CLE", "CLE",
+  "COL", "COL",
+  "DET", "DET",
+  "HOU", "HOU",
+  "KCA", "KC",
+  "LAN", "LAD",
+  "MIA", "MIA",
+  "MIL", "MIL",
+  "MIN", "MIN",
+  "NYA", "NYY",
+  "NYN", "NYM",
+  "OAK", "OAK",
+  "PHI", "PHI",
+  "PIT", "PIT",
+  "SDN", "SD",
+  "SEA", "SEA",
+  "SFN", "SF",
+  "SLN", "STL",
+  "TBA", "TB",
+  "TEX", "TEX",
+  "TOR", "TOR",
+  "WAS", "WSH"
+)
+
+# Get 2022 and 2023 teams data
+teams_recent <- Lahman::Teams %>%
+  filter(yearID %in% c(2022, 2023)) %>%
+  left_join(lahman_to_mlbplotr, by = "teamID") %>%
+  filter(!is.na(team_abbr)) %>%
+  mutate(year = factor(yearID))
+
+# Plot with facet_wrap by year
+ggplot(teams_recent, aes(x = W, y = RA)) +
+  geom_mlb_logos(aes(team_abbr = team_abbr), width = 0.08) +
+  facet_wrap(~ year) +
+  labs(
+    title = "Runs Against vs Wins (2022 & 2023)",
+    x = "Wins",
+    y = "Runs Against"
+  ) +
+  theme_bw()
+```
+
+From this plot you can see that the Cardinals moved to a completely different region of the graph. Most of the teams that had low wins and high runs against stayed the same, while the Cardinals moved into a region unlike most of the other teams. If we now look into differences in Runs Against and ERA over the years you will see the similar pattern of the Cardinals moving into a territory of bad baseball.
+
+```{r echo=FALSE}
+# Prepare 2022 and 2023 data separately
+teams_2022 <- Lahman::Teams %>%
+  filter(yearID == 2022) %>%
+  select(teamID, RA_2022 = RA)
+
+teams_2023 <- Lahman::Teams %>%
+  filter(yearID == 2023) %>%
+  select(teamID, RA_2023 = RA)
+
+# Merge by teamID and attach logos
+ra_compare <- teams_2023 %>%
+  inner_join(teams_2022, by = "teamID") %>%
+  left_join(lahman_to_mlbplotr, by = "teamID") %>%
+  filter(!is.na(team_abbr))
+
+# Plot RA comparison
+ggplot(ra_compare, aes(x = RA_2022, y = RA_2023)) +
+  geom_mlb_logos(aes(team_abbr = team_abbr), width = 0.05) +
+  labs(
+    title = "2023 vs 2022 Runs Against by Team",
+    x = "Runs Against in 2022",
+    y = "Runs Against in 2023"
+  ) +
+  theme_minimal()
+
+```
+
+```{r echo = FALSE}
+# Prepare 2022 and 2023 ERA data separately
+teams_2022 <- Lahman::Teams %>%
+  filter(yearID == 2022) %>%
+  select(teamID, ERA_2022 = ERA)
+
+teams_2023 <- Lahman::Teams %>%
+  filter(yearID == 2023) %>%
+  select(teamID, ERA_2023 = ERA)
+
+# Merge by teamID and attach logos
+era_compare <- teams_2023 %>%
+  inner_join(teams_2022, by = "teamID") %>%
+  left_join(lahman_to_mlbplotr, by = "teamID") %>%
+  filter(!is.na(team_abbr))
+
+# Plot ERA comparison
+ggplot(era_compare, aes(x = ERA_2022, y = ERA_2023)) +
+  geom_mlb_logos(aes(team_abbr = team_abbr), width = 0.05) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") +
+  scale_x_continuous(limits = c(2.5, 6)) + 
+  scale_y_continuous(limits = c(2.5, 6)) +
+  labs(
+    title = "2023 vs 2022 ERA by Team",
+    x = "ERA in 2022",
+    y = "ERA in 2023"
+  ) +
+  theme_minimal()
+
+```
+
+Now as you can see almost every teams ERA increased from 2022-2023, but if you notice which teams had the largest increase are some of the worst teams in baseball for the 2023 season. The Cardinals were trending in a bad direction if they were grouped in a category with the Athletics, Angels, and White Sox.
+
+# Cardinals Roster
+
+Between 2022 and 2023 there were some major losses to the Cardinals. They lost Albert Pujols and Yadier Molina to retirement. These are both future Hall of Famers that were two of the best players to ever put on a Cardinal uniform and even baseball uniform in general. The rest of the roster stayed pretty similar except for a couple of additions. The team added some young rookies and signed Willson Contreras from the Cubs as Molina's replacement. Less than 2 months into the season, the Cardinals announced they were benching Contreras for his bad play as a catcher. The front office blamed Contreras for the decline in pitching performance rather than blaming the pitchers for not being good. The starting rotation had 4 pitchers older than 31 years old and that included Wainwright who 40 and could not throw over 89 MPH. This also included Miles Mikolas who statistically has been one of the worst pitchers in the MLB since 2022 with leading the MLB in Hits Against while having a very low strikeout rate. He consistently has finished near the top of ERA ratings, but consistently gets a lot of starts while not producing like the 'Ace' he was paid to be.
+
+This is why we will look into the Statcast data to find any information we can about the team and what really changed. I believe there will large differences in the way that the pitchers were pitching and how they were going about their game plans.
+
+# Statcast Data
+
+We will look into the 2021-2023 pitching data from Statcast. This will give us 2 years of baseline performance before a bad year where we can look into the differences. We will compare the differences between the Cardinals past years and the differences between better teams during those years to see how they compare.
+
+## Load in the Data
+
+```{r load_data, cache=TRUE, message=FALSE}
+# Load in Statcast Data
+stat2021 <- readRDS('statcast2021.RData')
+stat2022 <- readRDS('statcast2022.RData')
+stat2023 <- readRDS('statcast2023.RData')
+
+PLAYERIDMAP <- read_csv("C:/Users/qbcar/github/Stat430Baseball/PLAYERIDMAP.csv")
+```
+
+```{r cardinals, warning=FALSE}
+cards_2021 <- stat2021 %>%
+  filter(home_team == 'STL' | away_team == 'STL') %>%
+  left_join(PLAYERIDMAP %>% select(IDPLAYER, TEAM, MLBID, MLBNAME), 
+            by = c("pitcher_id" = 'MLBID'))
+
+cards_2022 <- stat2022 %>%
+  filter(home_team == 'STL' | away_team == 'STL') %>%
+  left_join(PLAYERIDMAP %>% select(IDPLAYER, TEAM, MLBID, MLBNAME), 
+            by = c("pitcher_id" = 'MLBID'))
+
+cards_2023 <- stat2023 %>%
+  filter(home_team == 'STL' | away_team == 'STL') %>%
+  left_join(PLAYERIDMAP %>% select(IDPLAYER, TEAM, MLBID, MLBNAME), 
+            by = c("pitcher_id" = 'MLBID'))
+
+cards_pitch21 <- cards_2021 %>%
+  filter((home_team == 'STL' & half_inning == 'top') | 
+           (away_team == 'STL' & half_inning == 'bottom'))
+cards_pitch22 <- cards_2022 %>%
+  filter((home_team == 'STL' & half_inning == 'top') | 
+           (away_team == 'STL' & half_inning == 'bottom'))
+cards_pitch23 <- cards_2023 %>%
+  filter((home_team == 'STL' & half_inning == 'top') | 
+           (away_team == 'STL' & half_inning == 'bottom'))
+```
+
+The following code creates a function that makes a strikezone.
+```{r}
+library(ggdensity)
+
+# create geom to visualize the strikezone
+geom_strikezone = function(sz_top = 3.8, sz_bot = 1.1) {
+  plate_width = 17 + 2 * (9 / pi)
+  sz_left = -(plate_width / 2) / 12
+  sz_right = (plate_width / 2) / 12
+  strikezone = data.frame(
+    x = c(sz_left, sz_left, sz_right, sz_right, sz_left),
+    y = c(sz_bot, sz_top, sz_top, sz_bot, sz_bot)
+  )
+  geom_path(
+    mapping = aes(.data$x, .data$y),
+    data = strikezone,
+    linewidth = 0.5,
+    linetype = 1,
+    color = "black"
+  )
+}
+location_func <- function(pitchers){
+  location_plot = {
+    ggplot(pitchers) +
+      aes(x = plate_x, y = plate_z) +
+      xlim(c(-4, 4)) +
+      ylim(c(-2, 6)) +
+      xlab("") +
+      ylab("") +
+      theme_bw() +
+      coord_fixed() +
+      facet_wrap(vars(pitch_name))
+  }
+  
+  location_plot +
+    geom_hdr(
+      method = method_kde(h = 0.75),
+      probs = c(0.90, 0.70, 0.50, 0.40, 0.30, 0.20),
+      show.legend = FALSE,
+      aes(fill = after_stat(probs)),
+      alpha = 0.75
+    )  +
+    scale_fill_brewer(
+      palette = "RdBu",
+      direction = -1
+    ) +
+    geom_strikezone()
+}  
+```
+
+## Cardinals Pitchers
+
+One of the first things we will look into is pitching usage. Looking into the players the were pitching for the Cardinals and see what is the difference in mindset of using certain pitches.
+So first we will look at the overall usage trends for each year by the pitch type.
+```{r fig.width = 12, fig.height = 8}
+cards_perc21 <- cards_pitch21 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2021)
+
+cards_perc22 <- cards_pitch22 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2022)
+
+cards_perc23 <- cards_pitch23 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2023)
+
+cards_all <- bind_rows(cards_perc21, cards_perc22, cards_perc23)
+
+pitch_order <- cards_perc21 %>%
+  arrange(desc(usage)) %>%
+  pull(pitch_name)
+
+cards_all$pitch_name <- factor(cards_all$pitch_name, levels = pitch_order)
+
+# Step 3: Plot
+ggplot(cards_all, aes(x = pitch_name, y = usage, fill = factor(year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "STL Cardinals Pitch Usage by Year",
+    x = "Pitch Name",
+    y = "Usage Percentage",
+    fill = "Year"
+  ) +
+  theme_minimal()
+
+```
+
+As you can see there was a decrease in the usage of 4-Seam, Slider, and Changeup while there was an increase in hte usage of Sinker and Curveball.
+This seems to be a change in who was on the mound and the idea of attack within each pitcher. 
+
+```{r message=FALSE}
+pitch_perc_player21 <- cards_pitch21 %>%
+  group_by(pitcher_id, MLBNAME, pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage))
+
+pitch_perc_player22 <- cards_pitch22 %>%
+  group_by(pitcher_id, MLBNAME, pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage))
+
+pitch_perc_player23 <- cards_pitch23 %>%
+  group_by(pitcher_id, MLBNAME, pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage))
+```
+
+
+
+
+

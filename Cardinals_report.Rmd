@@ -1,0 +1,475 @@
+---
+title: "Cardinals 2023 Season"
+author: "Nathan Butler"
+date: "2025-05-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r load_data}
+stat2021 <- readRDS('statcast2021.RData')
+stat2022 <- readRDS('statcast2022.RData')
+stat2023 <- readRDS('statcast2023.RData')
+```
+
+```{r message = FALSE}
+library(readr)
+PLAYERIDMAP <- read_csv("C:/Users/qbcar/github/Stat430Baseball/PLAYERIDMAP.csv")
+```
+
+## Including Plots
+
+```{r cardinals}
+library(tidyverse)
+cards_2021 <- stat2021 %>%
+  filter(home_team == 'STL' | away_team == 'STL') %>%
+  left_join(PLAYERIDMAP %>% select(IDPLAYER, TEAM, MLBID, MLBNAME), 
+            by = c("pitcher_id" = 'MLBID'))
+
+cards_2022 <- stat2022 %>%
+  filter(home_team == 'STL' | away_team == 'STL') %>%
+  left_join(PLAYERIDMAP %>% select(IDPLAYER, TEAM, MLBID, MLBNAME), 
+            by = c("pitcher_id" = 'MLBID'))
+
+cards_2023 <- stat2023 %>%
+  filter(home_team == 'STL' | away_team == 'STL') %>%
+  left_join(PLAYERIDMAP %>% select(IDPLAYER, TEAM, MLBID, MLBNAME), 
+            by = c("pitcher_id" = 'MLBID'))
+```
+
+```{r}
+cards_pitch21 <- cards_2021 %>%
+  filter((home_team == 'STL' & half_inning == 'top') | 
+           (away_team == 'STL' & half_inning == 'bottom'))
+cards_pitch22 <- cards_2022 %>%
+  filter((home_team == 'STL' & half_inning == 'top') | 
+           (away_team == 'STL' & half_inning == 'bottom'))
+cards_pitch23 <- cards_2023 %>%
+  filter((home_team == 'STL' & half_inning == 'top') | 
+           (away_team == 'STL' & half_inning == 'bottom'))
+```
+
+```{r}
+library(ggdensity)
+
+# create geom to visualize the strikezone
+geom_strikezone = function(sz_top = 3.8, sz_bot = 1.1) {
+  plate_width = 17 + 2 * (9 / pi)
+  sz_left = -(plate_width / 2) / 12
+  sz_right = (plate_width / 2) / 12
+  strikezone = data.frame(
+    x = c(sz_left, sz_left, sz_right, sz_right, sz_left),
+    y = c(sz_bot, sz_top, sz_top, sz_bot, sz_bot)
+  )
+  geom_path(
+    mapping = aes(.data$x, .data$y),
+    data = strikezone,
+    linewidth = 0.5,
+    linetype = 1,
+    color = "black"
+  )
+}
+location_func <- function(pitchers){
+  location_plot = {
+    ggplot(pitchers) +
+      aes(x = plate_x, y = plate_z) +
+      xlim(c(-4, 4)) +
+      ylim(c(-2, 6)) +
+      xlab("") +
+      ylab("") +
+      theme_bw() +
+      coord_fixed() +
+      facet_wrap(vars(pitch_name))
+  }
+  
+  location_plot +
+    geom_hdr(
+      method = method_kde(h = 0.75),
+      probs = c(0.90, 0.70, 0.50, 0.40, 0.30, 0.20),
+      show.legend = FALSE,
+      aes(fill = after_stat(probs)),
+      alpha = 0.75
+    )  +
+    scale_fill_brewer(
+      palette = "RdBu",
+      direction = -1
+    ) +
+    geom_strikezone()
+}  
+```
+
+```{r}
+mikolas_21 <- cards_pitch21 %>%
+  filter(IDPLAYER == 'mikolmi01')
+mikolas_22 <- cards_pitch22 %>%
+  filter(IDPLAYER == 'mikolmi01')
+mikolas_23 <- cards_pitch23 %>%
+  filter(IDPLAYER == 'mikolmi01')
+```
+
+```{r}
+location_func(mikolas_21)
+location_func(mikolas_22)
+location_func(mikolas_23)
+```
+
+```{r}
+# Add a year column to each dataset
+mikolas_21 <- mikolas_21 %>% mutate(year = 2021)
+mikolas_22 <- mikolas_22 %>% mutate(year = 2022)
+mikolas_23 <- mikolas_23 %>% mutate(year = 2023)
+
+# Combine all years into one dataframe
+mikolas_all <- bind_rows(mikolas_21, mikolas_22, mikolas_23)
+
+# Calculate average release speed for each pitch type by year
+pitch_avgs <- mikolas_all %>%
+  group_by(year, pitch_name) %>%
+  summarise(avg_speed = mean(release_speed, na.rm = TRUE), .groups = 'drop')
+
+# Plot
+ggplot(pitch_avgs, aes(x = pitch_name, y = avg_speed, fill = factor(year))) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Miles Mikolas - Average Pitch Speed by Year",
+       x = "Pitch Type",
+       y = "Average Speed (mph)",
+       fill = "Year") +
+  scale_y_continuous(limits = c(0,100), breaks = seq(0,100, 20)) +
+  theme_minimal()
+
+```
+
+
+```{r}
+wainwright_21 <- cards_pitch21 %>%
+  filter(MLBNAME == 'Adam Wainwright')
+
+wainwright_22 <- cards_pitch22 %>%
+  filter(MLBNAME == 'Adam Wainwright')
+
+wainwright_23 <- cards_pitch23 %>%
+  filter(MLBNAME == 'Adam Wainwright')
+
+```
+
+```{r}
+location_func(wainwright_21)
+location_func(wainwright_22)
+location_func(wainwright_23)
+```
+
+```{r}
+ggplot(wainwright_all, aes(x = plate_x, y = plate_z,
+                          color = as.factor(pitch_na))) +
+  xlim(c(-4, 4)) +
+  ylim(c(-2, 6)) +
+  geom_point() +
+  geom_strikezone() +
+  facet_wrap(~events)
+```
+
+
+```{r}
+# Add a year column to each dataset
+wainwright_21 <- wainwright_21 %>% mutate(year = 2021)
+wainwright_22 <- wainwright_22 %>% mutate(year = 2022)
+wainwright_23 <- wainwright_23 %>% mutate(year = 2023)
+
+# Combine all years into one dataframe
+wainwright_all <- bind_rows(wainwright_21, wainwright_22, wainwright_23)
+
+# Calculate average release speed for each pitch type by year
+pitch_avgs <- wainwright_all %>%
+  group_by(year, pitch_name) %>%
+  summarise(avg_speed = mean(release_speed, na.rm = TRUE), .groups = 'drop')
+
+# Plot
+ggplot(pitch_avgs, aes(x = pitch_name, y = avg_speed, fill = factor(year))) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Miles Mikolas - Average Pitch Speed by Year",
+       x = "Pitch Type",
+       y = "Average Speed (mph)",
+       fill = "Year") +
+  scale_y_continuous(limits = c(0,100), breaks = seq(0,100, 20)) +
+  theme_minimal()
+
+```
+```{r}
+ggplot(wainwright_all, aes(x = release_spin_rate, y = release_speed, color = pitch_name)) +
+  geom_point() + 
+  facet_wrap(~ year) + 
+  theme_bw() + 
+  theme(legend.position = 'bottom')
+
+ggplot(mikolas_all, aes(x = release_spin_rate, y = release_speed, color = as.factor(zone))) +
+  geom_point() + 
+  facet_wrap(~ year) + 
+  theme_bw() + 
+  theme(legend.position = 'bottom')
+```
+
+
+```{r}
+pitch_perc_player21 <- cards_pitch21 %>%
+  group_by(pitcher_id, MLBNAME, pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage))
+
+pitch_perc_player22 <- cards_pitch22 %>%
+  group_by(pitcher_id, MLBNAME, pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage))
+
+pitch_perc_player23 <- cards_pitch23 %>%
+  group_by(pitcher_id, MLBNAME, pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage))
+```
+
+```{r}
+mik21 <- pitch_perc_player21 %>%
+  filter(MLBNAME == 'Miles Mikolas') %>%
+  mutate(year = 2021)
+
+mik22 <- pitch_perc_player22 %>%
+  filter(MLBNAME == 'Miles Mikolas') %>%
+  mutate(year = 2022)
+
+mik23 <- pitch_perc_player23 %>%
+  filter(MLBNAME == 'Miles Mikolas') %>%
+  mutate(year = 2023)
+
+mik_all <- bind_rows(mik21, mik22, mik23)
+
+library(ggplot2)
+
+ggplot(mik_all, aes(x = pitch_name, y = usage, fill = factor(year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Miles Mikolas Pitch Usage by Year",
+       x = "Pitch Name",
+       y = "Usage Percentage",
+       fill = "Pitch Type") +
+  theme_minimal()
+
+```
+```{r}
+cards_perc21 <- cards_pitch21 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2021)
+
+cards_perc22 <- cards_pitch22 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2022)
+
+cards_perc23 <- cards_pitch23 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2023)
+
+cards_all <- bind_rows(cards_perc21, cards_perc22, cards_perc23)
+
+ggplot(cards_all, aes(x = pitch_name, y = usage, fill = factor(year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "STL Cardinals Pitch Usage by Year",
+       x = "Pitch Name",
+       y = "Usage Percentage",
+       fill = "Pitch Type") +
+  theme_minimal()
+```
+```{r}
+mlb_perc21 <- stat2021 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2021)
+
+mlb_perc22 <- stat2022 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2022)
+
+mlb_perc23 <- stat2023 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2023)
+
+mlb_all <- bind_rows(mlb_perc21, mlb_perc22, mlb_perc23)
+
+ggplot(mlb_all, aes(x = pitch_name, y = usage, fill = factor(year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "MLB Pitch Usage by Year",
+       x = "Pitch Name",
+       y = "Usage Percentage",
+       fill = "Pitch Type") +
+  theme_minimal()
+```
+# Lahman Data
+
+```{r}
+library(Lahman)
+library(retrosheet)
+
+Pitching <- Lahman::Pitching
+Batting <- Lahman::Batting
+People <- Lahman::People
+Teams <- Lahman::Teams
+Fielding <- Lahman::Fielding
+
+Pitch_sum <- Lahman::Pitching %>%
+  filter(yearID >= 2021) %>%
+  group_by(playerID) %>%
+  summarise(total_games = sum(G),
+            total_starts = sum(GS),
+            total_ipouts = sum(IPouts),
+            total_wins = sum(W),
+            total_losses = sum(L),
+            total_hits = sum(H),
+            total_runs = sum(R),
+            total_earned_runs = sum(ER),
+            total_homeruns = sum(HR),
+            total_strikeouts = sum(SO),
+            .groups = "drop"
+            ) %>%
+  left_join(People %>% select(playerID, nameFirst, nameLast, birthDate), by = 'playerID') %>%
+  mutate(total_ERA = (total_earned_runs / (total_ipouts /3)) * 9) %>%
+  filter(total_games > 5) %>%
+  arrange(desc(total_ERA))
+```
+
+```{r}
+cards <- Teams %>%
+  filter(franchID == "STL" & yearID %in% c(2021, 2022,2023))
+cards_bat <- Batting %>%
+  filter(teamID == 'SLN' & yearID %in% c(2021, 2022, 2023))
+
+cards_long <- cards %>%
+  pivot_longer(cols = c(W, R, H, X2B, X3B, HR, BB, SO, RA, ER, ERA, IPouts, HA, HRA, SOA, E),
+               names_to = "stat",
+               values_to = "value")
+
+ggplot(cards_long, aes(x = factor(yearID), y = value)) +
+  geom_line(group = 1, color = "steelblue", linewidth = 1.2) +
+  geom_point(color = "steelblue", size = 2) +
+  facet_wrap(~ stat, scales = "free_y") +
+  labs(title = "St. Louis Cardinals Team Statistics (2021–2023)",
+       x = "Year",
+       y = "Value") +
+  theme_minimal()
+
+
+```
+
+```{r}
+library(mlbplotR)
+
+lahman_to_mlbplotr <- tibble::tribble(
+  ~teamID, ~team_abbr,
+  "LAA", "LAA",
+  "ARI", "AZ",
+  "ATL", "ATL",
+  "BAL", "BAL",
+  "BOS", "BOS",
+  "CHN", "CHC",
+  "CHA", "CWS",
+  "CIN", "CIN",
+  "CLE", "CLE",
+  "COL", "COL",
+  "DET", "DET",
+  "HOU", "HOU",
+  "KCA", "KC",
+  "LAN", "LAD",
+  "MIA", "MIA",
+  "MIL", "MIL",
+  "MIN", "MIN",
+  "NYA", "NYY",
+  "NYN", "NYM",
+  "OAK", "OAK",
+  "PHI", "PHI",
+  "PIT", "PIT",
+  "SDN", "SD",
+  "SEA", "SEA",
+  "SFN", "SF",
+  "SLN", "STL",
+  "TBA", "TB",
+  "TEX", "TEX",
+  "TOR", "TOR",
+  "WAS", "WSH"
+)
+
+teams_recent <- Teams %>%
+  filter(yearID %in% 2021:2023) %>%
+  left_join(lahman_to_mlbplotr, by = "teamID") %>%
+  filter(!is.na(team_abbr)) %>%
+  mutate(year = factor(yearID))
+
+ggplot(teams_recent, aes(x = W, y = RA)) +
+  geom_mlb_logos(aes(team_abbr = team_abbr), width = 0.05) +
+  labs(
+    title = "Runs vs Wins (2021–2023)",
+    x = "Wins",
+    y = "Runs Against"
+  ) +
+  theme_minimal()
+
+ggplot(teams_recent, aes(x = W, y = SOA)) +
+  geom_mlb_logos(aes(team_abbr = team_abbr), width = 0.05) +
+  labs(
+    title = "Runs vs Wins (2021–2023)",
+    x = "Wins",
+    y = "Strikeouts Thrown"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+hr_22 <- cards_pitch22 %>%
+  filter(events == 'home_run')
+
+hr_22_pit <- hr_22 %>%
+  group_by(pitcher_id, MLBNAME, pitch_name) %>%
+  summarise(hr_a = n()) 
+
+hr_23 <- cards_pitch23 %>%
+  filter(events == 'home_run')
+
+hr_23_pit <- hr_23 %>%
+  group_by(pitcher_id, MLBNAME, pitch_name) %>%
+  summarise(hr_a = n()) 
+
+hr_21 <- cards_pitch21 %>%
+  filter(events == 'home_run')
+
+hr_21_pit <- hr_21 %>%
+  group_by(pitcher_id, MLBNAME, pitch_name) %>%
+  summarise(hr_a = n()) 
+
+```
+
+
+

@@ -1,0 +1,823 @@
+---
+title: "2023 Cardinals Case Study"
+author: "Nathan Butler"
+output: beamer_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r libraries, message=FALSE, echo=FALSE}
+# Load Required Libraries
+library(Lahman)
+library(tidyverse)
+library(readr)
+```
+
+## Background
+
+ - The St. Louis Cardinals have historically been at the top of standings.  
+ 
+```{r cards_wins, echo=FALSE}
+# Filter and recode data
+Cards <- Lahman::Teams %>%
+  filter(franchID == 'STL' & yearID >= 1903 & yearID != 2020) %>%
+  mutate(
+    WSWin = case_when(
+      is.na(WSWin) ~ "No World Series Held",
+      WSWin == "Y" ~ "Won World Series",
+      WSWin == "N" ~ "Did Not Win",
+      TRUE ~ WSWin
+    ),
+    WSWin = factor(WSWin, levels = c("Won World Series", "Did Not Win", "No World Series Held")),
+    Wpct = W / G
+  )
+
+ggplot(Cards, aes(x = yearID, y = Wpct)) +
+  geom_line(color = "gray40") +
+  geom_point(aes(color = WSWin), size = 2) +
+  scale_color_manual(values = c(
+    "Won World Series" = "blue",
+    "Did Not Win" = "red",
+    "No World Series Held" = "gray10"
+  )) +
+  scale_y_continuous(limits = c(0.3, 0.7)) +
+  labs(
+    title = "St. Louis Cardinals Win % by Year",
+    x = "Year",
+    y = "Win Percentage",
+    color = "World Series Outcome"
+  ) +
+  theme(legend.position = "bottom")
+
+```
+
+## Background
+
+ - Cardinals generally fare well in their division
+
+```{r echo=FALSE}
+ggplot(Cards %>% filter(yearID >= 2000), aes(x = yearID, y = Wpct)) +
+  geom_line(color = "gray40") +
+  geom_point(aes(color = factor(Rank)), size = 2) +
+  scale_y_continuous(limits = c(0.3, 0.7)) +
+  scale_x_continuous(breaks = c(2000, 2005, 2010, 2015, 2019, 2023)) +
+  labs(
+    title = "St. Louis Cardinals Win % by Year",
+    x = "Year",
+    y = "Win Percentage",
+    color = "Divisional Rank"
+  ) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Cardinals Roster
+
+ - Between 2022 and 2023 there were some major losses to the Cardinals. 
+ - They lost Albert Pujols and Yadier Molina to retirement.
+ - The team added some young rookies and signed Willson Contreras from the Cubs as Molina's replacement. 
+ - Less than 2 months into the season, the Cardinals announced they were benching Contreras for his bad play as a catcher. 
+ - The front office blamed Contreras for the decline in pitching performance rather than blaming the pitchers for not being good. 
+ - The starting rotation had 4 pitchers older than 31 years old and that included Wainwright who 40 and could not throw over 89 MPH. 
+
+## Research Question
+
+ - We will look specifically at the pitching downfall
+
+```{r echo=FALSE}
+cards_long <- Cards %>%
+  filter(yearID >= 2017 & yearID != 2020) %>%
+  select(yearID, HA, RA, ERA) %>%
+  pivot_longer(cols = c(HA, RA, ERA), names_to = "Stat", values_to = "Value") %>%
+  mutate(Stat = recode(Stat,
+                       "HA" = "Hits Against",
+                       "RA" = "Runs Against",
+                       "ERA" = "Earned Run Average"))
+
+# Plot
+ggplot(cards_long, aes(x = yearID, y = Value)) +
+  geom_line(group = 1, color = "steelblue") +
+  geom_point(color = "darkred", size = 2) +
+  facet_wrap(~ Stat, scales = "free_y") +
+  scale_x_continuous(limits = c(2017, 2023), breaks = seq(2017, 2023, by = 2)) +
+  labs(
+    title = "Cardinals Pitching Statistics (2017–2023, Excluding 2020)",
+    x = "Year",
+    y = "Value"
+  ) +
+  theme_bw()
+```
+
+## Pitching
+
+ - See the difference over years
+ 
+```{r}
+Cards %>%
+  filter(yearID >= 2017 & yearID != 2020) %>%
+  select("Year" = yearID, W, L, Rank, R, RA, ERA, HRA, SOA)
+```
+
+## All Teams 2023
+
+ - All categories appear to be much worse than in the past, especially the Runs Against
+ 
+```{r message = FALSE, echo=FALSE}
+library(mlbplotR)
+
+lahman_to_mlbplotr <- tibble::tribble(
+  ~teamID, ~team_abbr,
+  "LAA", "LAA",
+  "ARI", "AZ",
+  "ATL", "ATL",
+  "BAL", "BAL",
+  "BOS", "BOS",
+  "CHN", "CHC",
+  "CHA", "CWS",
+  "CIN", "CIN",
+  "CLE", "CLE",
+  "COL", "COL",
+  "DET", "DET",
+  "HOU", "HOU",
+  "KCA", "KC",
+  "LAN", "LAD",
+  "MIA", "MIA",
+  "MIL", "MIL",
+  "MIN", "MIN",
+  "NYA", "NYY",
+  "NYN", "NYM",
+  "OAK", "OAK",
+  "PHI", "PHI",
+  "PIT", "PIT",
+  "SDN", "SD",
+  "SEA", "SEA",
+  "SFN", "SF",
+  "SLN", "STL",
+  "TBA", "TB",
+  "TEX", "TEX",
+  "TOR", "TOR",
+  "WAS", "WSH"
+)
+
+# Get 2022 and 2023 teams data
+teams_recent <- Lahman::Teams %>%
+  filter(yearID %in% c(2022, 2023)) %>%
+  left_join(lahman_to_mlbplotr, by = "teamID") %>%
+  filter(!is.na(team_abbr)) %>%
+  mutate(year = factor(yearID))
+
+# Plot with facet_wrap by year
+ggplot(teams_recent, aes(x = W, y = RA)) +
+  geom_mlb_logos(aes(team_abbr = team_abbr), width = 0.08) +
+  facet_wrap(~ year) +
+  labs(
+    title = "Runs Against vs Wins (2022 & 2023)",
+    x = "Wins",
+    y = "Runs Against"
+  ) +
+  theme_bw()
+```
+
+## More Team differences
+
+```{r echo=FALSE}
+# Prepare 2022 and 2023 data separately
+teams_2022 <- Lahman::Teams %>%
+  filter(yearID == 2022) %>%
+  select(teamID, RA_2022 = RA)
+
+teams_2023 <- Lahman::Teams %>%
+  filter(yearID == 2023) %>%
+  select(teamID, RA_2023 = RA)
+
+# Merge by teamID and attach logos
+ra_compare <- teams_2023 %>%
+  inner_join(teams_2022, by = "teamID") %>%
+  left_join(lahman_to_mlbplotr, by = "teamID") %>%
+  filter(!is.na(team_abbr))
+
+# Plot RA comparison
+ggplot(ra_compare, aes(x = RA_2022, y = RA_2023)) +
+  geom_mlb_logos(aes(team_abbr = team_abbr), width = 0.05) +
+  labs(
+    title = "2023 vs 2022 Runs Against by Team",
+    x = "Runs Against in 2022",
+    y = "Runs Against in 2023"
+  ) +
+  theme_minimal()
+
+```
+
+## More Team Differences Again
+
+ - Cardinals grouped in a category with the Athletics, Angels, and White Sox
+
+```{r echo = FALSE}
+# Prepare 2022 and 2023 ERA data separately
+teams_2022 <- Lahman::Teams %>%
+  filter(yearID == 2022) %>%
+  select(teamID, ERA_2022 = ERA)
+
+teams_2023 <- Lahman::Teams %>%
+  filter(yearID == 2023) %>%
+  select(teamID, ERA_2023 = ERA)
+
+# Merge by teamID and attach logos
+era_compare <- teams_2023 %>%
+  inner_join(teams_2022, by = "teamID") %>%
+  left_join(lahman_to_mlbplotr, by = "teamID") %>%
+  filter(!is.na(team_abbr))
+
+# Plot ERA comparison
+ggplot(era_compare, aes(x = ERA_2022, y = ERA_2023)) +
+  geom_mlb_logos(aes(team_abbr = team_abbr), width = 0.05) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") +
+  scale_x_continuous(limits = c(2.5, 6)) + 
+  scale_y_continuous(limits = c(2.5, 6)) +
+  labs(
+    title = "2023 vs 2022 ERA by Team",
+    x = "ERA in 2022",
+    y = "ERA in 2023"
+  ) +
+  theme_minimal()
+
+```
+
+
+## Statcast Data
+
+ - We will look into the 2021-2023 pitching data from Statcast. 
+ - This will give us 2 years of baseline performance before a bad year where we can look into the differences. 
+ - We will compare the differences between the Cardinals past years and the differences between better teams during those years to see how they compare.
+
+
+```{r load_data, message=FALSE, echo=FALSE}
+# Load in Statcast Data
+stat2021 <- readRDS('statcast2021.RData')
+stat2022 <- readRDS('statcast2022.RData')
+stat2023 <- readRDS('statcast2023.RData')
+
+PLAYERIDMAP <- read_csv("C:/Users/qbcar/github/Stat430Baseball/PLAYERIDMAP.csv")
+```
+
+```{r cardinals, warning=FALSE, echo=FALSE}
+cards_2021 <- stat2021 %>%
+  filter(home_team == 'STL' | away_team == 'STL') %>%
+  left_join(PLAYERIDMAP %>% select(IDPLAYER, TEAM, MLBID, MLBNAME), 
+            by = c("pitcher_id" = 'MLBID'))
+
+cards_2022 <- stat2022 %>%
+  filter(home_team == 'STL' | away_team == 'STL') %>%
+  left_join(PLAYERIDMAP %>% select(IDPLAYER, TEAM, MLBID, MLBNAME), 
+            by = c("pitcher_id" = 'MLBID'))
+
+cards_2023 <- stat2023 %>%
+  filter(home_team == 'STL' | away_team == 'STL') %>%
+  left_join(PLAYERIDMAP %>% select(IDPLAYER, TEAM, MLBID, MLBNAME), 
+            by = c("pitcher_id" = 'MLBID'))
+
+cards_pitch21 <- cards_2021 %>%
+  filter((home_team == 'STL' & half_inning == 'top') | 
+           (away_team == 'STL' & half_inning == 'bottom'))
+cards_pitch22 <- cards_2022 %>%
+  filter((home_team == 'STL' & half_inning == 'top') | 
+           (away_team == 'STL' & half_inning == 'bottom'))
+cards_pitch23 <- cards_2023 %>%
+  filter((home_team == 'STL' & half_inning == 'top') | 
+           (away_team == 'STL' & half_inning == 'bottom'))
+```
+
+```{r echo=FALSE}
+library(ggdensity)
+
+# create geom to visualize the strikezone
+geom_strikezone = function(sz_top = 3.8, sz_bot = 1.1) {
+  plate_width = 17 + 2 * (9 / pi)
+  sz_left = -(plate_width / 2) / 12
+  sz_right = (plate_width / 2) / 12
+  strikezone = data.frame(
+    x = c(sz_left, sz_left, sz_right, sz_right, sz_left),
+    y = c(sz_bot, sz_top, sz_top, sz_bot, sz_bot)
+  )
+  geom_path(
+    mapping = aes(.data$x, .data$y),
+    data = strikezone,
+    linewidth = 0.5,
+    linetype = 1,
+    color = "black"
+  )
+}
+location_func <- function(pitchers){
+  location_plot = {
+    ggplot(pitchers) +
+      aes(x = plate_x, y = plate_z) +
+      xlim(c(-4, 4)) +
+      ylim(c(-2, 6)) +
+      xlab("") +
+      ylab("") +
+      theme_bw() +
+      coord_fixed() +
+      facet_wrap(vars(pitch_name))
+  }
+  
+  location_plot +
+    geom_hdr(
+      method = method_kde(h = 0.75),
+      probs = c(0.90, 0.70, 0.50, 0.40, 0.30, 0.20),
+      show.legend = FALSE,
+      aes(fill = after_stat(probs)),
+      alpha = 0.75
+    )  +
+    scale_fill_brewer(
+      palette = "RdBu",
+      direction = -1
+    ) +
+    geom_strikezone()
+}  
+```
+
+## Pitching Usage
+
+ - One of the first things we will look into is pitching usage
+ 
+```{r fig.width = 12, fig.height = 8, echo=FALSE}
+cards_perc21 <- cards_pitch21 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2021)
+
+cards_perc22 <- cards_pitch22 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2022)
+
+cards_perc23 <- cards_pitch23 %>%
+  group_by(pitch_name) %>%
+  summarise(tot = n()) %>%
+  mutate(usage = round(tot / sum(tot), digits = 4)) %>%
+  arrange(desc(usage)) %>%
+  mutate(year = 2023)
+
+cards_all <- bind_rows(cards_perc21, cards_perc22, cards_perc23)
+
+pitch_order <- cards_perc21 %>%
+  arrange(desc(usage)) %>%
+  pull(pitch_name)
+
+cards_all$pitch_name <- factor(cards_all$pitch_name, levels = pitch_order)
+
+# Step 3: Plot
+ggplot(cards_all, aes(x = pitch_name, y = usage, fill = factor(year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "STL Cardinals Pitch Usage by Year",
+    x = "Pitch Name",
+    y = "Usage Percentage",
+    fill = "Year"
+  ) +
+  theme_minimal()
+
+```
+
+## Pitch Usage
+
+ - As you can see there was a decrease in the usage of 4-Seam, Slider, and Changeup while there was an increase in the usage of Sinker and Curveball.
+ - I know that there was a change in the pitching coach between 2022 and 2023 so that could indicate some of the arsenal changes.
+ - In the past the Cardinals have always been a pitch for contact team that does not get a lot of strikeouts. 
+ - Seeing that over 50% of pitches are Fastballs of some sort really shows the idea that the Cardinals do not throw off speed a lot compared to other teams.
+ 
+## Starting Pitching
+
+ - We will specifically look at the Starting Pitchers and look into their stats to see what they were like
+
+
+```{r echo = FALSE}
+# Summarize RA by starters only
+starters_RA <- Lahman::Pitching %>%
+  filter(yearID >= 2021 & teamID == 'SLN' & GS > 0) %>%
+  group_by(yearID) %>%
+  summarise(RA_starters = sum(R))
+
+# Get total team RA from Teams dataset
+team_RA <- Lahman::Teams %>%
+  filter(yearID >= 2021 & teamID == 'SLN') %>%
+  select(yearID, RA) %>%
+  rename(RA_team = RA)
+
+# Combine into one table
+RA_comparison <- left_join(starters_RA, team_RA, by = "yearID")
+RA_comparison %>% mutate(Run_percent = RA_starters / RA_team)
+
+```
+
+ - Starters account for around 66% of all runs scored on the Cardinals
+ 
+## Starters
+
+ - Analyze the players that pitched in 2023 and also pitched in 2022 
+
+```{r echo=FALSE}
+starter_years <- Lahman::Pitching %>%
+  filter(yearID %in% 2021:2023, teamID == "SLN", GS > 0) %>%
+  select(playerID, yearID) %>%
+  distinct()
+
+# Collapse years into a comma-separated string per player
+starter_years_collapsed <- starter_years %>%
+  group_by(playerID) %>%
+  summarise(years_started = paste(sort(unique(yearID)), collapse = ", ")) %>%
+  ungroup()
+
+# Join with Players table to get names
+starter_names <- Lahman::People %>%
+  select(playerID, nameFirst, nameLast)
+
+# Combine names with starter years
+cards_starters_named <- starter_years_collapsed %>%
+  left_join(starter_names, by = "playerID") %>%
+  mutate(player_name = paste(nameFirst, nameLast)) %>%
+  select(player_name, years_started) %>%
+  arrange(player_name)
+
+cards_starters_named
+```
+
+
+
+## Starters Named
+
+ - 9 starters that pitched in both years
+
+```{r echo=FALSE}
+# Filter Cardinals pitchers from 2021–2023
+cards_pitchers <- Lahman::Pitching %>%
+  filter(yearID %in% 2021:2023, teamID == "SLN" & GS > 0) %>%
+  select(playerID, yearID) %>%
+  distinct()
+
+# Identify pitchers who pitched in 2023
+pitched_2023 <- cards_pitchers %>%
+  filter(yearID == 2023) %>%
+  pull(playerID)
+
+# Identify pitchers who also pitched in 2022
+pitched_other_years <- cards_pitchers %>%
+  filter(yearID %in% c(2022)) %>%
+  pull(playerID)
+
+# Get intersection of both sets
+multi_year_pitchers <- intersect(pitched_2023, pitched_other_years)
+
+# Get names and years pitched for these players
+multi_year_pitcher_years <- cards_pitchers %>%
+  filter(playerID %in% multi_year_pitchers) %>%
+  group_by(playerID) %>%
+  summarise(years_pitched = paste(sort(unique(yearID)), collapse = ", ")) %>%
+  ungroup()
+
+# Add player names
+pitcher_names <- Lahman::People %>%
+  select(playerID, nameFirst, nameLast)
+
+multi_year_pitchers_named <- multi_year_pitcher_years %>%
+  left_join(pitcher_names, by = "playerID") %>%
+  mutate(player_name = paste(nameFirst, nameLast)) %>%
+  select(player_name, years_pitched) %>%
+  arrange(player_name)
+
+multi_year_pitchers_named
+
+```
+
+## Starters 
+
+ - After looking into this a little more we can see that Jake Woodford and Zack Thompson both only started in 1 game in 2022
+ - So the pitchers we will look into are Adam Wainwright, Dakota Hudson, Jack Flaherty, Jordan Montgomery, Matthew Liberatore, Miles Mikolas, and Steven Matz.
+
+```{r echo=FALSE}
+# Step 1: Filter Cardinals starters from 2021–2023
+cards_pitchers <- Lahman::Pitching %>%
+  filter(yearID %in% 2021:2023, teamID == "SLN", GS > 0) %>%
+  select(playerID, yearID) %>%
+  distinct()
+
+# Step 2: Get 2023 and 2022 pitchers
+pitched_2023 <- cards_pitchers %>%
+  filter(yearID == 2023) %>%
+  pull(playerID)
+
+pitched_2022 <- cards_pitchers %>%
+  filter(yearID == 2022) %>%
+  pull(playerID)
+
+# Step 3: Intersect 2023 and 2022 pitchers
+multi_year_pitchers <- intersect(pitched_2023, pitched_2022)
+
+# Step 4: Extract yearly stats for each qualifying pitcher
+cards_stats <- Lahman::Pitching %>%
+  filter(playerID %in% multi_year_pitchers, teamID == "SLN", yearID %in% 2022:2023) %>%
+  select(playerID, yearID, ERA, R, W, L, H, GS, SO)
+
+# Step 5: Add player names
+pitcher_names <- Lahman::People %>%
+  select(playerID, nameFirst, nameLast)
+
+cards_stats_named <- cards_stats %>%
+  left_join(pitcher_names, by = "playerID") %>%
+  mutate(player_name = paste(nameFirst, nameLast)) %>%
+  select(player_name, yearID, ERA, R, W, L, H, GS, SO) %>%
+  arrange(player_name, yearID)
+
+cards_stats_named <- cards_stats_named %>%
+  filter(!player_name %in% c("Jake Woodford", "Zack Thompson"))
+#head(cards_stats_named
+
+```
+ 
+## Starters Stats 2022 vs 2023
+
+
+```{r echo=FALSE}
+# Reshape the data to long format
+cards_plot_data <- cards_stats_named %>%
+  pivot_longer(cols = c(ERA, R, W, H, L, GS, SO),
+               names_to = "stat",
+               values_to = "value") %>%
+  pivot_wider(names_from = yearID, values_from = value, names_prefix = "year_") %>%
+  filter(!is.na(year_2022) & !is.na(year_2023))  # Ensure both years are present
+
+# Plot
+ggplot(cards_plot_data, aes(x = year_2022, y = year_2023, color = player_name)) +
+  geom_point(size = 3) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  facet_wrap(~stat, scales = "free") +
+  labs(
+    title = "Pitching Stats: 2022 vs 2023 by Pitcher",
+    x = "2022 Value",
+    y = "2023 Value",
+    color = "Pitcher"
+  ) +
+  theme_bw()
+
+```
+
+## Starter Usage
+
+ - Here you can find that starters use Sinker considerably more and started to decrease in Curveball.
+
+```{r echo=FALSE}
+target_pitchers <- cards_stats_named$player_name
+
+# Combine years
+cards_pitch_all <- bind_rows(
+  cards_pitch22 %>% mutate(year = 2022),
+  cards_pitch23 %>% mutate(year = 2023)
+)
+
+# Filter to target pitchers only
+pitchers_arsenal <- cards_pitch_all %>%
+  filter(MLBNAME %in% target_pitchers) %>%
+  filter(!is.na(pitch_name)) %>%
+  group_by(MLBNAME, year, pitch_name) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  arrange(MLBNAME, year, desc(n))
+
+pitcher_usage <- pitchers_arsenal %>%
+  group_by(MLBNAME, year) %>%
+  mutate(usage = round(n / sum(n), 4)) %>%
+  ungroup()
+
+total_usage <- pitcher_usage %>%
+  group_by(year, pitch_name) %>%
+  summarise(tot = sum(n), .groups = "drop")
+total_usage <- total_usage %>%
+  group_by(year) %>%
+  mutate(usage = round(tot / sum(tot), 4)) %>%
+  ungroup()
+pitch_order <- total_usage %>%
+  filter(year == 2022) %>%
+  arrange(desc(usage)) %>%
+  pull(pitch_name)
+
+total_usage$pitch_name <- factor(total_usage$pitch_name, levels = pitch_order)
+
+ggplot(total_usage, aes(x = pitch_name, y = usage, fill = factor(year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Pitch Usage by Year (Filtered Starters)",
+    x = "Pitch Type",
+    y = "Usage Percentage",
+    fill = "Year"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+## Effects of Each Pitch
+
+ - Look into the details of each pitch type 
+ 
+```{r fig.width = 12, fig.height = 8, echo=FALSE}
+Cards_starters_sc <- cards_pitch_all %>%
+  filter(MLBNAME %in% target_pitchers) %>%
+  filter(!is.na(pitch_name))
+
+# Find Averages of all pitch stats
+cards_sc <- Cards_starters_sc %>%
+  group_by(MLBNAME, year, pitch_name) %>%
+  summarise(
+    avg_spin = mean(release_spin_rate, na.rm = TRUE),
+    avg_velo = mean(release_speed, na.rm = TRUE),
+    avg_x = mean(plate_x, na.rm = TRUE),
+    avg_z = mean(plate_z, na.rm = TRUE),
+    avg_horizontal = mean(pfx_x, na.rm = TRUE),
+    avg_vertical = mean(pfx_z, na.rm = TRUE),
+    avg_striket = mean(strike_zone_top),
+    avg_strikeb = mean(strike_zone_bottom),
+    .groups = "drop"
+  )
+
+ggplot(cards_sc, aes(x = avg_x, y = avg_z, color = pitch_name))+
+  geom_line(aes(group = interaction(MLBNAME, pitch_name)), linewidth = 0.8, alpha = 0.6) +
+  geom_point(aes(shape = factor(year)), size = 3) +
+  geom_strikezone() +
+  facet_wrap(~MLBNAME) +
+  theme_bw() + 
+  theme(legend.position = 'bottom') +
+    labs(
+    x = "Average Horizontal Placement",
+    y = "Average Vertical Placement",
+    color = "Pitch Type",
+    shape = "Year"
+  )
+```
+
+## Pitch Location
+
+ - Plot showed the differences in average pitch location between years. 
+ - As you can see most of the pitchers average location for each pitch moved towards the middle or towards the inside of right handed hitter. 
+ - These locations are the from the catchers perspective and thus can show the difference in where a catcher calls a pitch.
+ - Looking at Flaherty you can see major changes in changeup location and Matz has huge differences in slider location.
+ - These changes in location most likely have to do with changes in strategy of game calling by these pitchers and how they want to attack hitters. 
+ 
+## Velocity and Spin Rate
+  - Average dropping around 1-2 MPH, not a good direction for aging starting rotation  
+
+```{r echo=FALSE}
+ggplot(cards_sc, aes(x = avg_velo, y = avg_spin, color = MLBNAME)) +
+  geom_line(aes(group = interaction(MLBNAME, pitch_name)), linewidth = 0.8, alpha = 0.6) +
+  geom_point(aes(shape = factor(year)), size = 2) +
+  facet_wrap(~pitch_name, scales = 'free_x') +
+  theme_bw() +
+  labs(
+    x = "Average Velocity (mph)",
+    y = "Average Spin Rate (rpm)",
+    color = "Pitcher",
+    shape = "Year"
+  )
+
+```
+
+
+## Horizontal and Vertical Movement
+
+```{r echo=FALSE}
+ggplot(cards_sc, aes(x = avg_horizontal, y = avg_vertical, color = pitch_name)) +
+  geom_line(aes(group = interaction(MLBNAME, pitch_name)), linewidth = 0.8, alpha = 0.6) +
+  geom_point(aes(shape = factor(year)), size = 2) +
+  facet_wrap(~MLBNAME) +
+  theme_bw() +
+  labs(
+    x = "Average Horizontal Movement",
+    y = "Average Vertical Movement",
+    color = "Pitch Type",
+    shape = "Year"
+  )
+```
+
+## Balls in Play Statcast
+
+  - 4 seam stayed about the same with being middle middle, Sinkers moved towards left side of home plate 
+ 
+```{r fig.width = 12, fig.height = 8, echo=FALSE}
+# Find Averages of all pitch stats in play
+cards_play <- Cards_starters_sc %>%
+  filter(type == 'X') %>%
+  group_by(MLBNAME, year, pitch_name) %>%
+  summarise(
+    avg_spin = mean(release_spin_rate, na.rm = TRUE),
+    avg_velo = mean(release_speed, na.rm = TRUE),
+    avg_x = mean(plate_x, na.rm = TRUE),
+    avg_z = mean(plate_z, na.rm = TRUE),
+    avg_horizontal = mean(pfx_x, na.rm = TRUE),
+    avg_vertical = mean(pfx_z, na.rm = TRUE),
+    avg_striket = mean(strike_zone_top),
+    avg_strikeb = mean(strike_zone_bottom),
+    .groups = "drop"
+  )
+
+ggplot(cards_play, aes(x = avg_x, y = avg_z, color = MLBNAME))+
+  geom_line(aes(group = interaction(MLBNAME, pitch_name)), linewidth = 0.8, alpha = 0.6) +
+  geom_point(aes(shape = factor(year)), size = 3) +
+  geom_strikezone() +
+  facet_wrap(~pitch_name) +
+  theme_bw() + 
+  theme(legend.position = 'bottom') +   
+  labs(
+    x = "Average Horizontal Placement",
+    y = "Average Vertical Placement",
+    color = "Pitcher",
+    shape = "Year"
+  )
+```
+
+## Balls in Play Spin
+
+```{r warning=FALSE, echo=FALSE}
+ggplot(cards_play, aes(x = avg_velo, y = avg_spin, color = MLBNAME)) +
+  geom_line(aes(group = interaction(MLBNAME, pitch_name)), linewidth = 0.8, alpha = 0.6) +
+  geom_point(aes(shape = factor(year)), size = 2) +
+  facet_wrap(~pitch_name, scales = 'free_x') +
+  theme_bw() +
+  labs(
+    x = "Average Velocity (mph)",
+    y = "Average Spin Rate (rpm)",
+    color = "Pitcher",
+    shape = "Year"
+  )
+```
+
+## Balls in Play Spin
+
+ - When looking deeper into balls in play you can see the major differences in the spin rates and velocity.  
+ - Looking at Adam Wainwright's fast balls, he was averaging around 87 for his sinker while having average spin rates. 
+  - For the rest of the pitchers you can that changeups all decreased in their spin rates causing the ball to be able to pick up easier and thus more easily hit. 
+ - These decreases in pitching velocity and spin rates did likely cause the ball to be hit more as these trends show that the pitchers were pitching slower with less spin on the ball.
+ 
+## Balls in Play Movement
+
+```{r warning=FALSE, echo=FALSE}
+ggplot(cards_play, aes(x = avg_x, y = avg_vertical, color = MLBNAME)) +
+  geom_line(aes(group = interaction(MLBNAME, pitch_name)), linewidth = 0.8, alpha = 0.6) +
+  geom_point(aes(shape = factor(year)), size = 2) +
+  facet_wrap(~pitch_name, scales = 'free_x') +
+  theme_bw() +
+  labs(
+    x = "Average Horizontal Movement",
+    y = "Average Vertical Movement",
+    color = "Pitcher",
+    shape = "Year"
+  )
+```
+
+## Balls in Play Movement
+
+ - Finally looking into balls in play movements we can see the differences between how these pitchers moved the ball. 
+ - We already mentioned the decrease in spin rates for pitchers, so it is no surprise that for sliders we see the movements trending toward no movement.
+ - The decreased spin rates of the changeup and slider lead to less horizontal movement and vertical movement on pitches that are supposed to be moving during the pitch. 
+ - These are breaking balls and off speed that do not seem to move.
+ - Looking at the sinker which the Cardinals seem to love so much, you can see that the movement is very small with pitches only moving 0.25 ft compared to cutters and changeups moving far more.
+ 
+## Starters Sinkers
+
+ - A sinker needs to have run for the pitch to fool the batters eyes and miss judge the ball. 
+ - It is weird that sinkers appear to be having positive vertical movement when they are supposed to run arm side and fall slightly. 
+ - The Cardinals seem to throw standard two seams that sometimes tend to rise more than they run. 
+ - You can see with spin rates and velocity dropping that it is not surprising that they do not run as much as they would probably like to.
+ 
+## No More Shift?
+
+ - Looking at all of the data that came from the Cardinals 2023 season, it appears that the Cardinals got 'caught' and 'exposed' during the 2023 season. 
+
+```{r}
+Cards_starters_sc %>%
+  group_by(year, if_fielding_alignment) %>%
+  summarise(tot = n(), .groups = 'drop')
+```
+ 
+## Conclusion
+
+ - Looking back at the Statcast data you can see an aging rotation that had decreased velocity, spin rates, and movement on pitches. 
+ - This roster was already old before the season started and there were worries about whether the old guys could do it, but it just seems like they were getting exposed with all of their flaws about their mindset of pitching and execution of pitches. 
+ - Although there were lots of other problems with this team such as a lack of power and consistent hitting, the pitching was by far the worst problem on that field and was something that was not addressed. 
+ - The pitching staff was one of the worst in the MLB with very low strikeout numbers, high runs against, and being one of the oldest rotations in the league. 
+ 
+## Conclusion
+
+ - You can see from all the graphs that the pitching continued to be worse than any previous year before it. 
+ - Many people blamed the loss of Yadier Molina for why the pitching was so bad.
+ - During the 2023 season almost all pitchers saw some sort of loss of velocity or spin rate on their pitches resulting in a lack of execution and declining performance. 
+ - The problems with location and game calling do play a factor, but it still does not account for multiple MPH losses on fastballs and less movement on their pitches than in previous years. 
+ 
+## Conclusion
+
+ - There is still a lot of data to explore and other aspects of this team to look at, but looking at the starting pitchers data, it was easily seen that they were performing worse and some causes that could have led to it. 
+ - I do not believe it was Willson Contreras's fault that the pitching was so bad at the start of the season, he was a scapegoat for the pitchers and there is data to show that they were not as good. 
+

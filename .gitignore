@@ -1,0 +1,10 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Rapp.history
+
+# Datasets created that are too large for Github
+statcast2022.RData
+statcast2023.RData
+statcast2021.RData
